@@ -4,7 +4,7 @@ id: feedback
 name: Feedback
 type: service
 category: app
-version: 0.2.0
+version: 0.2.1
 summary: Report a bug or ask for something new, and follow your own feedback in plain words.
 license: GPL-3.0-only
 source: https://github.com/humanitylabs-org/wizardos-feedback
@@ -79,6 +79,7 @@ The GitHub token stays on this box (`DATA_DIR/private/account.json`, 0600); it i
 Appearance: shared kit only ([style guide](https://github.com/humanitylabs-org/wizard-os/blob/main/style/APP-DESIGN-RULES.md)).
 
 ## Changelog
+- **0.2.1**: Megaphone icon.
 - **0.2.0**: Send without signing in through the relay (switch `anonymous`, default off) with a soft GitHub sign-in
   offer; signed-in non-members use the relay whenever it is set; plain relay-down and rate-limit messages that keep the
   form; relay screenshots capped at 3 × 2 MB (shrunk in the browser); "Saved on this Wizard" note on the signed-out list.

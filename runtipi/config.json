@@ -11,7 +11,7 @@
   ],
   "description": "Report a bug or ask for something new, then follow your own feedback in plain words.",
   "tipi_version": 1,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "source": "https://github.com/humanitylabs-org/wizardos-feedback",
   "exposable": false,
   "supported_architectures": [
