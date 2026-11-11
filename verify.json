@@ -1,0 +1,88 @@
+{
+  "round_trip": [
+    {
+      "do": "GET /api/status",
+      "name": "status signed out",
+      "expect": {
+        "signed_in": false,
+        "can_send": false,
+        "anonymous": false
+      }
+    },
+    {
+      "do": "GET /api/feedback",
+      "name": "list signed out",
+      "expect": {
+        "source": "local",
+        "items": []
+      }
+    },
+    {
+      "do": "POST /api/feedback",
+      "name": "send signed out is refused",
+      "body": {
+        "kind": "bug",
+        "text": "Verify {{run}} should not send"
+      },
+      "status": 403
+    },
+    {
+      "do": "POST /api/draft",
+      "name": "save draft",
+      "body": {
+        "kind": "feature",
+        "text": "Verify {{run}} draft"
+      }
+    },
+    {
+      "do": "POST /api/status-check",
+      "name": "status mapping",
+      "body": {
+        "cases": [
+          {
+            "state": "open",
+            "labels": [
+              "triage",
+              "bug"
+            ]
+          },
+          {
+            "state": "open",
+            "labels": [
+              "building"
+            ]
+          },
+          {
+            "state": "closed",
+            "state_reason": "completed",
+            "closed_at": "2026-11-10T08:00:00Z"
+          }
+        ]
+      },
+      "expect": {
+        "results.0.key": "received",
+        "results.1.line": "Being built",
+        "results.2.line": "Done \u2713 (10 Nov 2026)"
+      }
+    },
+    {
+      "restart": true
+    },
+    {
+      "do": "GET /api/draft",
+      "name": "draft read back after restart",
+      "expect": {
+        "kind": "feature",
+        "text": "Verify {{run}} draft"
+      }
+    },
+    {
+      "do": "GET /api/switches",
+      "name": "switch off by default",
+      "expect": {
+        "switches.0.id": "anonymous",
+        "switches.0.on": false
+      }
+    }
+  ]
+}

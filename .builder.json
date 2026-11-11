@@ -1,0 +1,8 @@
+{
+  "request": "Report a bug or request a feature and follow your own feedback in plain words",
+  "template": "hello-wizard",
+  "kind": "hello",
+  "rules": 2,
+  "state": "local_draft",
+  "name": "Feedback"
+}

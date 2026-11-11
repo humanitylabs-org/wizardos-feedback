@@ -1,0 +1,50 @@
+/* Feedback-only styles. Everything shared (type, rows, sheets, colours) comes from wizard-ui.css. */
+.fb-top { display: grid; gap: 12px; justify-items: stretch; padding-top: 4px; }
+.fb-big { min-height: 56px; font-size: var(--wz-text-md); font-weight: 650; border-radius: var(--r-tile); }
+.fb-gate { margin: 0; text-align: center; font-size: var(--wz-text-sm); color: var(--ink-2); }
+.fb-gate[hidden], .fb-signin[hidden], .fb-code-box[hidden], .fb-acct[hidden], .fb-loading[hidden] { display: none; }
+.fb-signin { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.fb-code-box { display: grid; gap: 8px; justify-items: center; }
+.fb-code { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; margin: 0; }
+.fb-code b { font-family: var(--wz-font-mono); font-size: 2rem; font-weight: 700; letter-spacing: .12em; color: var(--ink); user-select: all; }
+.fb-meta { margin: 0; font-size: var(--wz-text-sm); color: var(--ink-3); }
+.fb-link { padding: 4px 6px; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--wz-text-sm); cursor: pointer; }
+.fb-acct { margin: 16px 8px; text-align: center; font-size: var(--wz-text-sm); color: var(--ink-3); }
+.fb-loading { padding: 8px; }
+.fb-row .fb-kind { flex: none; }
+.fb-line.fb-done { color: var(--wz-success); }
+.fb-line.fb-not_planned { color: var(--ink-3); }
+
+.rr { display: grid; gap: 14px; }
+.rr h2 { margin: 0; }
+.rr-step { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.rr-step[hidden] { display: none; }
+.rr-q { padding: 0; margin: 0 0 2px; font-size: var(--wz-text-md); font-weight: 650; color: var(--ink); }
+.rr-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rr-pick { min-height: 52px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: var(--r-tile); background: none; color: var(--ink); font: inherit; font-size: var(--wz-text-md); font-weight: 600; cursor: pointer; }
+.rr-pick[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.rr-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rr-text { height: auto; min-height: 160px; padding: 12px 14px; border-radius: var(--r-tile); line-height: 1.45; resize: vertical; font: inherit; }
+.rr-auto { margin: 0; font-size: var(--wz-text-sm); color: var(--ink-3); }
+.rr-foot { display: flex; justify-content: flex-end; gap: 8px; margin: 0; }
+.rr-shot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.rr-shot-pick { cursor: pointer; }
+.rr-shot-pick[hidden] { display: none; }
+.rr-thumb { position: relative; display: inline-block; }
+.rr-thumb img { display: block; height: 56px; width: 72px; border-radius: 6px; border: 1px solid var(--line-2); object-fit: cover; }
+.rr-thumb-x { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--fill-2); color: var(--ink); cursor: pointer; line-height: 1; }
+@media (max-width: 480px) { .rr-kinds { grid-template-columns: 1fr; } }
+
+.fb-d { display: grid; gap: 10px; }
+.fb-d h2 { margin: 0; overflow-wrap: anywhere; }
+.fb-d-kind { display: flex; align-items: center; gap: 8px; margin: 0; }
+.fb-d-line { margin: 0; font-weight: 600; color: var(--ink); }
+.fb-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0; padding: 0; list-style: none; }
+.fb-steps[hidden] { display: none; }
+.fb-step { padding-top: 8px; border-top: 3px solid var(--line-2); font-size: var(--wz-text-sm); color: var(--ink-3); }
+.fb-step[data-state="done"] { border-color: var(--accent); color: var(--ink-2); }
+.fb-step[data-state="now"] { border-color: var(--accent); color: var(--ink); font-weight: 650; }
+.fb-d-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
+.fb-comments { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.fb-comment { padding: 10px 12px; border-radius: var(--r-tile); background: var(--fill); }
+.fb-c-text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }

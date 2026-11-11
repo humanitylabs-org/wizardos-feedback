@@ -1,0 +1,156 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Feedback",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/status": {
+      "get": {
+        "summary": "Signed-in state, who can send and how (never the token)",
+        "responses": {
+          "200": {
+            "description": "{signed_in, login, member, can_send, send_via, send_reason, anonymous, relay}"
+          }
+        }
+      }
+    },
+    "/api/feedback": {
+      "get": {
+        "summary": "My feedback, newest first",
+        "responses": {
+          "200": {
+            "description": "{source, signed_in, items:[{id, kind, title, created, status_key, status, step}]}"
+          }
+        }
+      },
+      "post": {
+        "summary": "Send feedback {kind: bug|feature, text, screenshots?, device?, wizard_version?, operation_id?}",
+        "responses": {
+          "201": {
+            "description": "{sent, item}"
+          },
+          "403": {
+            "description": "Not signed in / not on the team and the relay is off"
+          }
+        }
+      }
+    },
+    "/api/feedback/item": {
+      "get": {
+        "summary": "One item ?id= : text, steps, team comments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "item"
+          }
+        }
+      }
+    },
+    "/api/draft": {
+      "get": {
+        "summary": "The unsent draft",
+        "responses": {
+          "200": {
+            "description": "{kind, text}"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save the unsent draft {kind, text}",
+        "responses": {
+          "200": {
+            "description": "{kind, text}"
+          }
+        }
+      }
+    },
+    "/api/device": {
+      "get": {
+        "summary": "Sign in with GitHub progress",
+        "responses": {
+          "200": {
+            "description": "{state, user_code, verification_uri}"
+          }
+        }
+      }
+    },
+    "/api/device/start": {
+      "post": {
+        "summary": "Start Sign in with GitHub (device flow)",
+        "responses": {
+          "200": {
+            "description": "{state, user_code, verification_uri}"
+          }
+        }
+      }
+    },
+    "/api/device/cancel": {
+      "post": {
+        "summary": "Cancel sign-in",
+        "responses": {
+          "200": {
+            "description": "{state}"
+          }
+        }
+      }
+    },
+    "/api/signout": {
+      "post": {
+        "summary": "Sign out (deletes the token on this box)",
+        "responses": {
+          "200": {
+            "description": "status"
+          }
+        }
+      }
+    },
+    "/api/switches": {
+      "get": {
+        "summary": "wizard.app-switches/1 catalog",
+        "responses": {
+          "200": {
+            "description": "switches"
+          }
+        }
+      },
+      "post": {
+        "summary": "Flip a switch {id, on} (X-Wizard-Switch: 1)",
+        "responses": {
+          "200": {
+            "description": "switches"
+          }
+        }
+      }
+    },
+    "/api/status-check": {
+      "post": {
+        "summary": "Run the status mapping on given facts {cases:[{state, state_reason, labels, closed_at}]}",
+        "responses": {
+          "200": {
+            "description": "{results:[{key, line, step}]}"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "summary": "MCP: feedback_send, feedback_list, feedback_get",
+        "responses": {
+          "200": {
+            "description": "JSON-RPC"
+          }
+        }
+      }
+    }
+  }
+}
