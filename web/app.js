@@ -1,7 +1,9 @@
 'use strict';
-// Feedback 0.3: a warm welcome with one big 'Report or request' button (two-step sheet: pick a kind card, then words)
-// and 'Your feedback', newest first: kind icon, title, a coloured status pill in plain words, progress dots and
-// a relative time. Tap a row for the full text, a dated timeline and words from the team.
+// Feedback 0.3.1: the page title and one 'Report or request' button (two-step sheet: pick a kind, then words), then
+// 'Your feedback', newest first, as flat rows with thin dividers: kind icon, title, a small status pill in plain words,
+// progress dots and a relative time. Chips filter it (All · Open · Done · Declined, plus Bugs · Ideas when they fit on
+// one line), remembered on this device. Tap a row for the full text, a dated timeline and words from the team
+// ('From the team: “…”' under a decline: the reason the reviewer wrote).
 const $ = id => document.getElementById(id);
 const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const KINDS = [['bug', 'Something’s broken', 'An app or part of Wizard isn’t working right'],
@@ -104,14 +106,46 @@ function row(it) {
   li.append(b);
   return li;
 }
+// ---------- filter chips (remembered on this device) ----------
+const FKEY = 'feedback.filter.v1';
+const STATUS_F = [['all', 'All'], ['open', 'Open'], ['done', 'Done'], ['declined', 'Declined']];
+const KIND_F = [['bug', 'Bugs'], ['idea', 'Ideas']];
+const bucket = it => it.status_key === 'done' ? 'done' : it.status_key === 'not_planned' ? 'declined' : 'open';
+const kindKey = it => it.kind === 'bug' ? 'bug' : 'idea';
+let filt = (() => { try { const f = JSON.parse(localStorage.getItem(FKEY) || '{}'); return { s: STATUS_F.some(x => x[0] === f.s) ? f.s : 'all', k: KIND_F.some(x => x[0] === f.k) ? f.k : '' }; } catch (_) { return { s: 'all', k: '' }; } })();
+let kindFits = true;
+function setFilter(f) { filt = { ...filt, ...f }; try { localStorage.setItem(FKEY, JSON.stringify(filt)); } catch (_) {} paintList(); }
+const passes = it => (filt.s === 'all' || bucket(it) === filt.s) && (!filt.k || !kindFits || kindKey(it) === filt.k);
+function chip(label, n, on, fn) {
+  const b = mk('button', 'wz-chip', label); b.type = 'button'; b.setAttribute('aria-pressed', String(on));
+  b.append(mk('small', null, String(n))); b.setAttribute('aria-label', `${label}, ${n}`); b.onclick = fn; return b;
+}
+function paintFilter(all) {
+  const bar = $('filter');
+  bar.hidden = all.length < 2;
+  if (bar.hidden) return;
+  const inKind = it => !filt.k || !kindFits || kindKey(it) === filt.k;
+  const st = STATUS_F.map(([k, label]) => chip(label, all.filter(it => inKind(it) && (k === 'all' || bucket(it) === k)).length, filt.s === k, () => setFilter({ s: k })));
+  const kd = KIND_F.map(([k, label]) => chip(label, all.filter(it => (filt.s === 'all' || bucket(it) === filt.s) && kindKey(it) === k).length, filt.k === k, () => setFilter({ k: filt.k === k ? '' : k })));
+  bar.replaceChildren(...st, mk('i', 'fb-gap'), ...kd);
+  // Bugs · Ideas only when the whole row fits on one line (390 px phones usually only fit the status chips)
+  const fits = bar.scrollWidth <= bar.clientWidth + 1;
+  if (!fits) { bar.replaceChildren(...st); if (kindFits && filt.k) { kindFits = false; return paintList(); } }
+  kindFits = fits;
+}
 function paintList() {
   const all = [...pending, ...items];
-  $('items').replaceChildren(...all.map(row));
+  paintFilter(all);
+  const shown = all.filter(it => it.pending || passes(it));
+  $('items').replaceChildren(...shown.map(row));
   $('loading').hidden = true;
   $('empty').hidden = all.length > 0;
-  $('count').hidden = !all.length; $('count').textContent = String(all.length);
+  const none = all.length > 0 && !shown.length;
+  $('empty-filter').hidden = !none;
+  $('empty-filter').textContent = none ? ({ open: 'Nothing open right now.', done: 'Nothing done yet.', declined: 'Nothing declined.' }[filt.s] || 'Nothing here.') : '';
   $('local-note').hidden = !(me && !me.signed_in && all.length);
 }
+addEventListener('resize', () => { kindFits = true; if (items.length || pending.length) paintList(); });
 async function loadList() {
   try { const r = await api('api/feedback' + (TZ ? '?tz=' + encodeURIComponent(TZ) : '')); items = r.items || []; paintList(); }
   catch (e) { $('loading').hidden = true; paintList(); say(e.message, 'error'); }
@@ -129,9 +163,10 @@ function paintDetail(d) {
   $('d-declined').hidden = !declined || !d.note;
   $('d-note').textContent = d.note || '';
   const tn = d.team_note;
-  $('d-team').hidden = !tn;
-  $('d-team-meta').textContent = tn ? 'The team' + (tn.when ? ' · ' + when(tn.when) : '') : '';
-  $('d-team-text').textContent = tn ? tn.text : '';
+  $('d-team').hidden = !tn || !declined;
+  $('d-declined').hidden = !declined || !(d.note || tn);
+  $('d-team-text').textContent = tn ? `“${tn.text}”` : '';
+  if (tn && tn.when) $('d-team').title = when(tn.when);
   const steps = d.steps || [];
   $('d-steps').replaceChildren(...steps.map(s => {
     const li = mk('li', 'fb-tl'); li.dataset.state = s.state;
@@ -335,7 +370,7 @@ $('detail').addEventListener('close', () => { detailFor = null; });
 if (!window.WizardApp || WizardApp.version !== 1) {
   say('Wizard system functions are unavailable. Open this through Wizard.', 'error');
 } else {
-  WizardApp.ready({ name: 'feedback', version: '0.3.0' });
+  WizardApp.ready({ name: 'feedback', version: '0.3.1' });
   // One screen; sheets push their own Back step (WzSheet). Back never exits from here.
   WizardApp.back.register({ canGoBack: () => false, back: () => false });
 }

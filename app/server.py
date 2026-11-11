@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 ROOT = Path(__file__).resolve().parent.parent if '__file__' in globals() else Path(os.environ.get('APP_ROOT', '.')).resolve()
 DATA = Path(os.environ.get('DATA_DIR', ROOT / '.data'))
 APP_ID = 'feedback'
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 SOURCE_REPO = 'humanitylabs-org/wizardos-feedback'
 STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml'}
 USER_AGENT = f'wizardos-feedback/{VERSION} (+https://github.com/{SOURCE_REPO})'
@@ -831,6 +831,13 @@ def refresh_local(sent, now=None):
                            closed_at=d.get('closed_at') or d.get('done_at'))
                 if d.get('title'):
                     rec['title'] = str(d['title'])[:200]
+                if d.get('kind') in ('bug', 'feature'):   # 0.3.1: the team may approve it as the other kind
+                    rec['kind'] = 'bug' if d['kind'] == 'bug' else 'idea'
+                note = d.get('team_note')
+                if isinstance(note, str) and note.strip() and d['status_key'] == 'not_planned':
+                    rec['team_note'] = _plain(note)[:TEAM_NOTE_MAX]   # the reviewer's reason, shown as 'From the team'
+                else:
+                    rec.pop('team_note', None)
             rec['checked'] = now
             changed = True
     if changed:
@@ -866,6 +873,25 @@ def _plain(body):
     b = re.sub(r'\n*Filed by @[\w-]+ with (?:Report or request|Feedback)[^\n]*', '', b)
     b = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', b)
     return re.sub(r'\n{3,}', '\n\n', b).strip()
+
+
+TEAM_NOTE_MAX = 500
+REASON_MARKER = '<!-- feedback-reason -->'
+# The Tracker's Drop / Not a bug comment: 'Dropped (not needed) — Name (@login)\n\nWhy: <reason>[\n\nBuilder: …]'
+DROP_NOTE = re.compile(r'^(?:Not a bug / won\u2019t fix|Dropped \(not needed\)) \u2014 [^\n]*\n\nWhy: ([\s\S]+?)(?:\n\nBuilder:[\s\S]*)?$')
+
+
+def reason_of(login, body):
+    """The decline reason in a comment, or '': the relay's '<!-- feedback-reason -->' comment (bot) or the Why: of a
+    Tracker Drop / Not a bug comment (a person, even one on the skip list). Only the reason text."""
+    b = (body or '').replace('\r\n', '\n')
+    low = (login or '').lower()
+    if REASON_MARKER in b and low.endswith('[bot]'):
+        return _plain(b.split(REASON_MARKER, 1)[1])[:TEAM_NOTE_MAX]
+    m = DROP_NOTE.match(b.strip())
+    if m and not low.endswith('[bot]'):
+        return _plain(m.group(1))[:TEAM_NOTE_MAX]
+    return ''
 
 
 BOTS = {'wizardosbuilder', 'oscarhenrycollins', 'defleur-agents', 'github-actions', BUILDER} | _csv_env('FEEDBACK_SKIP_ACCOUNTS')
@@ -915,8 +941,10 @@ def feedback_get(fid):
             raise Problem(404, 'That feedback is not on this Wizard.')
         row = _local_row(rec)
         st = keyed(row['status_key'], row['status_at'])
+        tn = rec.get('team_note') if st['key'] == 'not_planned' and isinstance(rec.get('team_note'), str) and rec['team_note'].strip() else None
         return {**row, 'text': rec.get('text') or '', 'comments': [], 'steps': timeline(st, rec.get('created')),
-                'note': DECLINED_NOTE if st['key'] == 'not_planned' else '', 'team_note': None}
+                'note': DECLINED_NOTE if st['key'] == 'not_planned' else '',
+                'team_note': {'who': 'The team', 'when': row['status_at'], 'text': tn} if tn else None}
     if not re.fullmatch(r'[A-Za-z0-9_=-]{6,80}', fid):
         raise Problem(400, 'Unknown feedback id.')
     if not account():
@@ -927,9 +955,13 @@ def feedback_get(fid):
     labels = [n['name'] for n in (node.get('labels') or {}).get('nodes') or []]
     st = status_of(node.get('state'), node.get('stateReason'), labels, node.get('closedAt'))
     me = account()['login']
-    people = []
+    people, reasons = [], []
     for c in (node.get('comments') or {}).get('nodes') or []:
         who = (c.get('author') or {}).get('login') or ''
+        why = reason_of(who, c.get('body'))
+        if why and who.lower() != (me or '').lower():   # 0.3.1: a decline reason (relay or Tracker Drop) is the team's note
+            reasons.append({'who': 'The team', 'when': c.get('createdAt'), 'text': why})
+            continue
         text = _plain(c.get('body'))
         if not text or not human(who):
             continue
@@ -938,7 +970,9 @@ def feedback_get(fid):
     events = [(((e or {}).get('label') or {}).get('name') or '', (e or {}).get('createdAt'))
               for e in (node.get('timelineItems') or {}).get('nodes') or []]
     team_note = None
-    if st['key'] == 'not_planned':   # the team's closing word, if a person left one: shown with the declined line
+    if st['key'] == 'not_planned' and reasons:   # 0.3.1: the reviewer's written reason wins
+        team_note = sorted(reasons, key=lambda c: c.get('when') or '')[-1]
+    elif st['key'] == 'not_planned':   # the team's closing word, if a person left one: shown with the declined line
         last = [c for c in people if c['who'] == 'The team']
         if last:
             team_note = last[-1]

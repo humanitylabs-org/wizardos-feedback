@@ -4,7 +4,7 @@ id: feedback
 name: Feedback
 type: service
 category: app
-version: 0.3.0
+version: 0.3.1
 summary: Report a bug or ask for something new, and follow your own feedback in plain words.
 license: GPL-3.0-only
 source: https://github.com/humanitylabs-org/wizardos-feedback
@@ -89,6 +89,12 @@ The GitHub token stays on this box (`DATA_DIR/private/account.json`, 0600); it i
 Appearance: shared kit only ([style guide](https://github.com/humanitylabs-org/wizard-os/blob/main/style/APP-DESIGN-RULES.md)).
 
 ## Changelog
+- **0.3.1**: Calmer page: the welcome card is gone — just the title and one **Report or request** button; the list is flat
+  rows with thin dividers (no cards), smaller status pills and progress dots. Filter chips **All · Open · Done · Declined**
+  with counts (plus **Bugs · Ideas** when they fit on one line), remembered on this device; one plain line when a filter
+  is empty. When the team declines something with a reason, the detail shows **From the team: “…”** under the
+  explanation (relay `/v1/status` `team_note`; signed in: the relay's reason comment or the Tracker's Drop / Not a bug
+  *Why*). When the team approves it as the other kind (an idea sent as a bug), the row follows the new kind.
 - **0.3.0**: Friendly for everyone: "Not planned" is now "Declined by the team · <day, time>" with a calm explanation and
   the team's closing words; every status in plain sentences with dates; warm welcome, big button, kind cards with icons,
   status pills with progress dots, relative times, a gentle empty state, a thank-you moment after sending and a dated
