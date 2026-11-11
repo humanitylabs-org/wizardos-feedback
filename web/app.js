@@ -1,5 +1,5 @@
 'use strict';
-// Feedback 0.1: one 'Report or request' button (two-step sheet, copied from the Tracker reporter) and 'My feedback',
+// Feedback 0.2: one 'Report or request' button (two-step sheet, copied from the Tracker reporter) and 'My feedback',
 // newest first, each with its kind and one plain status line. Tap a row for the full text, progress and team comments.
 const $ = id => document.getElementById(id);
 const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -11,7 +11,7 @@ const PROMPTS = {
 const UPDATES = '/wizard-os-home/store-install/_updates';
 let me = null, items = [], pending = [], kind = null, shots = [], updates = null, devTimer = null, draftHold = null, draftTimer = null;
 
-function say(text, kind = '') { const s = $('status'); s.classList.toggle('wz-sr', !kind); s.textContent = text; }
+function say(text, kind = '') { const s = $('status'); s.classList.toggle('wz-sr', !kind); s.classList.toggle('note', kind === 'note'); s.textContent = text; }
 async function api(path, data) {
   const init = data === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) };
   const r = await fetch(path, init);
@@ -40,6 +40,8 @@ function paintAccount() {
   const gate = $('gate');
   gate.hidden = !me || me.can_send;
   gate.textContent = me && !me.can_send ? (me.send_reason || 'Sign in with GitHub to send feedback.') : '';
+  $('rr-offer').hidden = !(me && me.signin_offer && !me.signed_in);
+  if (me && me.signin_offer) $('rr-offer').textContent = me.signin_offer;
 }
 async function loadStatus() { me = await api('api/status'); paintAccount(); }
 
@@ -64,6 +66,7 @@ function paintList() {
   $('loading').hidden = true;
   $('empty').hidden = all.length > 0;
   $('count').hidden = !all.length; $('count').textContent = String(all.length);
+  $('local-note').hidden = !(me && !me.signed_in && all.length);
   $('empty-p').textContent = me && !me.signed_in ? 'What you send shows up here. Sign in with GitHub to see everything you’ve sent from any Wizard.' : 'What you send shows up here, with how it’s going.';
 }
 async function loadList() {
@@ -114,6 +117,7 @@ function paintForm() {
   const can = !!(me && me.can_send);
   $('rr-go').disabled = !ready || !can;
   if (!can && kind) $('rr-status').textContent = (me && me.send_reason) || 'Sign in with GitHub to send feedback.';
+  $('rr-offer').hidden = !(me && me.signin_offer && !me.signed_in);
   paintShots();
 }
 function paintShots() {
@@ -131,17 +135,31 @@ function paintShots() {
   pick.hidden = shots.length >= max;
   rowEl.replaceChildren(...thumbs, pick);
 }
+// A screenshot bigger than this route allows (2 MB through the relay) is shrunk to a JPEG in the browser; if it still
+// does not fit, it is left out with one plain line.
+const bytesOf = url => Math.floor((url.length - url.indexOf(',') - 1) * 3 / 4);
+const readUrl = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = no; r.readAsDataURL(f); });
+async function shrink(f, big) {
+  const img = await createImageBitmap(f);
+  const c = document.createElement('canvas');
+  for (const side of [2560, 1920, 1440, 1080]) {
+    const k = Math.min(1, side / Math.max(img.width, img.height));
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    const g = c.getContext('2d'); g.fillStyle = getComputedStyle(document.body).backgroundColor; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+    for (const q of [0.85, 0.7, 0.55]) { const url = c.toDataURL('image/jpeg', q); if (bytesOf(url) <= big) return url; }
+  }
+  return null;
+}
 function addShots(files) {
-  const max = (me && me.shot_count) || 4, big = (me && me.shot_max) || 4 * 1024 * 1024;
+  const max = (me && me.shot_count) || 4, big = (me && me.shot_max) || 4 * 1024 * 1024, mb = Math.round(big / 1048576);
   for (const f of [...(files || [])]) {
     if (shots.length >= max) { $('rr-status').textContent = `Up to ${max} screenshots.`; break; }
     if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type)) { $('rr-status').textContent = 'Use a PNG, JPEG, WebP or GIF image.'; continue; }
-    if (f.size > big) { $('rr-status').textContent = 'That screenshot is too big (4 MB max).'; continue; }
     const s = { type: f.type, url: '' }; shots.push(s);
-    const r = new FileReader();
-    r.onload = () => { s.url = String(r.result); paintShots(); };
-    r.onerror = () => { shots = shots.filter(o => o !== s); paintShots(); };
-    r.readAsDataURL(f);
+    const drop = msg => { shots = shots.filter(o => o !== s); paintShots(); if (msg) $('rr-status').textContent = msg; };
+    (f.size <= big ? readUrl(f) : shrink(f, big).then(url => { if (url) s.type = 'image/jpeg'; return url; }))
+      .then(url => { if (!url) return drop(`That screenshot is too big (${mb} MB max). Try a smaller one.`); s.url = url; paintShots(); })
+      .catch(() => drop('That screenshot could not be read.'));
   }
   paintShots();
 }
@@ -185,7 +203,8 @@ function send(e) {
     setTimeout(loadList, 4000);
   }).catch(err => {
     pending = pending.filter(p => p !== temp); paintList();
-    openForm(); $('rr-status').textContent = err.message + ' Tap Send to try again.';
+    openForm();
+    $('rr-status').textContent = /^(relay_down|rate_limited)$/.test(err.reason || '') ? err.message : err.message + ' Tap Send to try again.';
   });
 }
 
@@ -238,12 +257,14 @@ for (const ev of ['paste', 'drop']) $('rr-text').addEventListener(ev, e => {
   if (fs.length) { e.preventDefault(); addShots(fs); }
 });
 $('rr-cancel').onclick = () => WzSheet.close($('report'));
+// The soft sign-in offer under Send: starts the same device-flow sign-in on the main screen; the words stay saved.
+$('rr-offer').onclick = () => { saveDraft(); WzSheet.close($('report')); $('oauth-go').click(); };
 $('detail').addEventListener('close', () => { detailFor = null; });
 
 if (!window.WizardApp || WizardApp.version !== 1) {
   say('Wizard system functions are unavailable. Open this through Wizard.', 'error');
 } else {
-  WizardApp.ready({ name: 'feedback', version: '0.1.0' });
+  WizardApp.ready({ name: 'feedback', version: '0.2.0' });
   // One screen; sheets push their own Back step (WzSheet). Back never exits from here.
   WizardApp.back.register({ canGoBack: () => false, back: () => false });
 }

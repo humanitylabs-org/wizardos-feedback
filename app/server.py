@@ -7,9 +7,10 @@ GitHub token lives on this box only (DATA_DIR/private/account.json, 0600) and is
 Two ways to send:
 - Signed in with GitHub as a humanitylabs-org member: files exactly like the Tracker reporter (wizard-os, labels
   triage + bug/feature, as the person); the WizardOS Builder's triage step moves it to the right repo.
-- The relay (switch `anonymous`, default OFF, and FEEDBACK_RELAY_URL or policy relay_url set): POST {relay}/v1/report,
-  follow with GET {relay}/v1/status?receipt=A,B. Signed-in non-members pass their GitHub token so the relay can file as
-  them. Client side only; the relay itself is a separate service.
+- The relay (FEEDBACK_RELAY_URL or policy relay_url set): POST {relay}/v1/report, follow with GET
+  {relay}/v1/status?receipt=A,B. Signed-in non-members use it whenever it is set and pass their GitHub token; signed-out
+  people use it only behind the switch `anonymous` (default OFF). The relay decides who goes straight to the builder and
+  who waits for a person to review. Client side only; the relay itself is a separate service.
 """
 import base64
 import binascii
@@ -30,7 +31,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 ROOT = Path(__file__).resolve().parent.parent if '__file__' in globals() else Path(os.environ.get('APP_ROOT', '.')).resolve()
 DATA = Path(os.environ.get('DATA_DIR', ROOT / '.data'))
 APP_ID = 'feedback'
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 SOURCE_REPO = 'humanitylabs-org/wizardos-feedback'
 STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml'}
 USER_AGENT = f'wizardos-feedback/{VERSION} (+https://github.com/{SOURCE_REPO})'
@@ -55,13 +56,18 @@ RELAY_SHOT_COUNT, RELAY_SHOT_MAX = 3, 2 * 1024 * 1024
 RELAY_BATCH = 50
 BODY_MAX = SHOT_COUNT * SHOT_MAX * 4 // 3 + 256 * 1024
 SENT = 'Sent. The team sorts it in a minute or two; follow it here.'
+SENT_REVIEW = 'Sent. A person on the team reviews it first.'
 NOT_TEAM = 'Feedback from outside the team opens soon.'
 SIGN_IN_FIRST = 'Sign in with GitHub to send feedback.'
+NO_MEMBER_CHECK = 'Could not check your team membership. Try again in a minute.'
+SIGN_IN_OFFER = 'Sign in with GitHub to follow it from any device and see replies from the team'
+RELAY_DOWN = "Couldn't send right now. Your words are saved; try again in a minute."
+RELAY_BUSY = "That's a lot of reports in a short time. Try again in a few minutes."
 
 SWITCHES = [
     {'id': 'anonymous', 'name': 'Send without the team',
-     'description': 'Send feedback through the Wizard relay when you are not signed in or not on the team. '
-                    'Needs a relay address; none exists yet.', 'default': False, 'issues': []},
+     'description': 'Let people send feedback without signing in, through the Wizard relay; a person on the '
+                    'team reviews it first. Needs a relay address.', 'default': False, 'issues': []},
 ]
 
 
@@ -194,6 +200,7 @@ def status_of(state, state_reason=None, labels=(), closed_at=None):
 
 def keyed(key, when=None):
     """A status_key (from status_of or the relay) -> {'key', 'line', 'step'}; done gets its date."""
+    key = 'received' if key == 'not_found' else key   # the relay has not indexed a fresh report yet (~1 min)
     line, step = STATUS.get(key, STATUS['unknown'])
     if key == 'done' and when and _date(when):
         line = f'Done ✓ ({_date(when)})'
@@ -477,29 +484,37 @@ def device_cancel():
 
 # ---------- what the screen and agents may do right now ----------
 
-def send_path():
-    """-> ('github'|'relay'|None, reason). Members file on GitHub; others use the relay only behind the switch."""
-    acct = account()
-    relay_ok = switch_on('anonymous') and bool(relay_url())
-    if acct:
-        m = is_member()
-        if m:
+def route(signed_in, member, relay, anonymous):
+    """The one send-routing decision -> ('github'|'relay'|None, reason).
+    Members file on GitHub directly. Signed-in non-members (or membership unknown) go through the relay whenever one is
+    set, with their GitHub token; the relay decides builder or human review. Signed out goes through the relay only
+    when the switch `anonymous` is on too. Otherwise sending is off, with the reason shown."""
+    if signed_in:
+        if member:
             return 'github', ''
-        if relay_ok:
+        if relay:
             return 'relay', ''
-        return None, NOT_TEAM if m is False else 'Could not check your team membership. Try again in a minute.'
-    if relay_ok:
+        return None, NOT_TEAM if member is False else NO_MEMBER_CHECK
+    if relay and anonymous:
         return 'relay', ''
     return None, SIGN_IN_FIRST
+
+
+def send_path():
+    acct = account()
+    return route(bool(acct), is_member() if acct else None, bool(relay_url()), switch_on('anonymous'))
 
 
 def status():
     acct = account()
     path, why = send_path()
+    relay = path == 'relay'
     return {'signed_in': bool(acct), 'login': (acct or {}).get('login'), 'name': (acct or {}).get('name'),
             'member': is_member() if acct else None, 'can_send': bool(path), 'send_via': path, 'send_reason': why,
+            'signin_offer': SIGN_IN_OFFER if relay and not acct else '',
             'anonymous': switch_on('anonymous'), 'relay': bool(relay_url()), 'version': VERSION,
-            'kinds': [{'key': k, 'name': v} for k, v in KINDS.items()], 'shot_max': SHOT_MAX, 'shot_count': SHOT_COUNT}
+            'kinds': [{'key': k, 'name': v} for k, v in KINDS.items()],
+            'shot_max': RELAY_SHOT_MAX if relay else SHOT_MAX, 'shot_count': RELAY_SHOT_COUNT if relay else SHOT_COUNT}
 
 
 # ---------- the text that gets filed (copied from Tracker report.py) ----------
@@ -590,6 +605,11 @@ def send(args):
     via, why = send_path()
     if not via:
         raise Problem(403, why, 'signed_out' if why == SIGN_IN_FIRST else 'not_member')
+    if via == 'relay':
+        if len(shots) > RELAY_SHOT_COUNT:
+            raise Problem(400, f'Up to {RELAY_SHOT_COUNT} screenshots at a time.')
+        if any(len(raw) > RELAY_SHOT_MAX for raw, _, _, _ in shots):
+            raise Problem(400, 'Each screenshot can be up to 2 MB. Remove the big one and try again.')
     out = send_github(kind, text, shots, args) if via == 'github' else send_relay(kind, text, shots, args)
     if op:
         _ops[op] = out
@@ -638,10 +658,6 @@ def _relay_call(method, path, body=None, timeout=30):
 def send_relay(kind, text, shots, args):
     """Relay contract: POST {relay}/v1/report {kind, text, wizard_version?, device?, gh_token?, screenshots?}
     -> {receipt, status_key, line}. The receipt is kept on this box in sent.json and followed with /v1/status."""
-    if len(shots) > RELAY_SHOT_COUNT:
-        raise Problem(400, f'Up to {RELAY_SHOT_COUNT} screenshots at a time.')
-    if any(len(raw) > RELAY_SHOT_MAX for raw, _, _, _ in shots):
-        raise Problem(400, 'Each screenshot can be up to 2 MB.')
     payload = {'kind': kind, 'text': text}
     for k, n in (('wizard_version', 60), ('device', 80)):
         v = _clean(args.get(k), n)
@@ -655,16 +671,12 @@ def send_relay(kind, text, shots, args):
     try:
         out = _relay_call('POST', '/v1/report', payload)
     except urllib.error.HTTPError as e:
-        try:
-            msg = str(json.loads(e.read(65536) or b'{}').get('error') or '')
-        except (ValueError, AttributeError):
-            msg = ''
-        raise Problem(502 if e.code >= 500 else 400, (msg or f'The feedback relay answered {e.code}.')[:300]) from None
+        raise relay_problem(e.code, e.read(65536)) from None
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-        raise Problem(502, 'Could not reach the feedback relay. Your words are still in the form; try again.') from None
+        raise Problem(503, RELAY_DOWN, 'relay_down') from None
     receipt = str(out.get('receipt') or '')
     if not re.fullmatch(r'[A-Za-z0-9._-]{6,120}', receipt):
-        raise Problem(502, 'The feedback relay did not give a receipt. Try again.')
+        raise Problem(503, RELAY_DOWN, 'relay_down')
     st = str(out.get('status_key') or 'waiting_review')
     rec = {'id': 'local-' + receipt, 'kind': 'bug' if kind == 'bug' else 'idea', 'title': title_of(text), 'text': text,
            'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'receipt': receipt,
@@ -673,7 +685,21 @@ def send_relay(kind, text, shots, args):
         sent = _read(DATA / 'sent.json', [])
         sent.append(rec)
         _write(DATA / 'sent.json', sent)
-    return {'sent': SENT, 'item': _local_row(rec)}
+    return {'sent': SENT_REVIEW, 'item': _local_row(rec)}
+
+
+def relay_problem(code, raw=b''):
+    """A relay error answer -> one plain Problem. 429: slow down; 5xx: down; other 4xx: the relay's own words."""
+    if code == 429:
+        return Problem(429, RELAY_BUSY, 'rate_limited')
+    if code >= 500:
+        return Problem(503, RELAY_DOWN, 'relay_down')
+    try:
+        d = json.loads(raw or b'{}')
+        msg = str(d.get('message') or d.get('error') or '') if isinstance(d, dict) else ''
+    except ValueError:
+        msg = ''
+    return Problem(400, (msg or f'The feedback relay answered {code}.')[:300], 'relay_refused')
 
 
 # ---------- history ----------
@@ -750,7 +776,9 @@ def refresh_local(sent, now=None):
             continue
         for rec in batch:
             d = res.get(rec['receipt'])
-            if isinstance(d, dict) and d.get('status_key') in STATUS:
+            if isinstance(d, dict) and d.get('status_key') == 'not_found':
+                rec['status_key'] = 'received'
+            elif isinstance(d, dict) and d.get('status_key') in STATUS:
                 rec.update(status_key=d['status_key'], updated=d.get('updated'), done_at=d.get('done_at'))
                 if d.get('title'):
                     rec['title'] = str(d['title'])[:200]
@@ -867,8 +895,9 @@ def draft_set(args):
 
 TOOLS = [
     {'name': 'feedback_send', 'description': "Send the owner's feedback: kind 'bug' (something's broken) or 'feature' (something new), and their words "
-     "(the first sentence becomes the title). Filed as the owner's own GitHub account. If it says to sign in, ask the owner to open Feedback "
-     "and tap Sign in with GitHub; never ask for a token.",
+     "(the first sentence becomes the title). Filed as the owner's own GitHub account, or through the Wizard relay (a person on the team "
+     "reviews it first) when not signed in or not on the team. If it says to sign in, ask the owner to open Feedback and tap Sign in "
+     "with GitHub; never ask for a token.",
      'inputSchema': {'type': 'object', 'properties': {'kind': {'type': 'string', 'enum': ['bug', 'feature', 'idea']}, 'text': {'type': 'string', 'minLength': 8, 'maxLength': 8000}},
                      'required': ['kind', 'text']}},
     {'name': 'feedback_list', 'description': "The owner's own feedback, newest first: id, title, kind (bug/idea) and a plain status line.",

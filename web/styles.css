@@ -11,6 +11,9 @@
 .fb-link { padding: 4px 6px; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--wz-text-sm); cursor: pointer; }
 .fb-acct { margin: 16px 8px; text-align: center; font-size: var(--wz-text-sm); color: var(--ink-3); }
 .fb-loading { padding: 8px; }
+.fb-local { margin: 0 8px 8px; }
+.fb-local[hidden], .rr-offer[hidden] { display: none; }
+.rr-offer { justify-self: end; max-width: 100%; text-align: right; color: var(--ink-3); text-decoration: underline; text-underline-offset: 3px; }
 .fb-row .fb-kind { flex: none; }
 .fb-line.fb-done { color: var(--wz-success); }
 .fb-line.fb-not_planned { color: var(--ink-3); }

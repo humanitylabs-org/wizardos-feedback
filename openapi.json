@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Feedback",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "paths": {
     "/api/status": {
@@ -10,7 +10,7 @@
         "summary": "Signed-in state, who can send and how (never the token)",
         "responses": {
           "200": {
-            "description": "{signed_in, login, member, can_send, send_via, send_reason, anonymous, relay}"
+            "description": "{signed_in, login, member, can_send, send_via, send_reason, signin_offer, anonymous, relay, shot_count, shot_max}"
           }
         }
       }

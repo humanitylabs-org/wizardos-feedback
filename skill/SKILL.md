@@ -1,7 +1,7 @@
 ---
 name: feedback
 description: Use when the owner wants to report a bug, ask for a feature, or check his feedback.
-version: 0.1.0
+version: 0.2.0
 author: Humanity Labs, Hermes Agent
 license: GPL-3.0-only
 platforms: [linux, macos]
@@ -15,7 +15,8 @@ metadata:
 The Feedback app files the owner's bug reports and requests for WizardOS and shows how each is doing, in plain words.
 
 - `feedback_send(kind, text)`: kind `bug` (something's broken) or `feature` (something new; `idea` also works). Pass
-  the owner's own words; the first sentence becomes the title. It is filed as the owner's GitHub account. Confirm
+  the owner's own words; the first sentence becomes the title. It is filed as the owner's GitHub account, or, when the owner is not signed in or not
+  on the team, through the Wizard relay, where a person on the team reviews it first. Confirm
   with `feedback_list`; never claim it was sent if the tool returned an error.
 - `feedback_list()`: the owner's own feedback, newest first: `id`, `title`, `kind` (bug/idea), `status` (one plain line,
   e.g. "In line to be built", "Done ✓ (10 Nov 2026)").
