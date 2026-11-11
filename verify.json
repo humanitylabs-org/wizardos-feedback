@@ -56,13 +56,33 @@
             "state": "closed",
             "state_reason": "completed",
             "closed_at": "2026-11-10T08:00:00Z"
+          },
+          {
+            "state": "closed",
+            "state_reason": "not_planned",
+            "closed_at": "2026-11-11T02:52:00Z"
+          },
+          {
+            "state": "closed",
+            "state_reason": "completed",
+            "labels": [
+              "rejected"
+            ]
           }
         ]
       },
       "expect": {
         "results.0.key": "received",
-        "results.1.line": "Being built",
-        "results.2.line": "Done \u2713 (10 Nov 2026)"
+        "results.0.line": "Got it — the team is sorting it",
+        "results.1.line": "Being built now",
+        "results.2.key": "done",
+        "results.2.base": "Done ✓",
+        "results.2.show": "date",
+        "results.3.key": "not_planned",
+        "results.3.base": "Declined by the team",
+        "results.3.show": "datetime",
+        "results.3.step": -1,
+        "results.4.key": "not_planned"
       }
     },
     {

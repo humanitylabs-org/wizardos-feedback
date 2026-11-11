@@ -39,7 +39,7 @@ class Routing(unittest.TestCase):
         self.assertEqual((e.code, e.message), (400, 'Say a little more.'))
 
     def test_not_found_reads_as_received(self):
-        self.assertEqual(server.keyed('not_found')['line'], 'Received — sorting it')
+        self.assertEqual(server.keyed('not_found')['line'], 'Got it — the team is sorting it')
 
 
 if __name__ == '__main__':

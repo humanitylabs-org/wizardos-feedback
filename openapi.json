@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Feedback",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "paths": {
     "/api/status": {
@@ -17,12 +17,22 @@
     },
     "/api/feedback": {
       "get": {
-        "summary": "My feedback, newest first",
+        "summary": "My feedback, newest first (?tz= the viewer's IANA time zone, kept for local times)",
         "responses": {
           "200": {
-            "description": "{source, signed_in, items:[{id, kind, title, created, status_key, status, step}]}"
+            "description": "{source, signed_in, items:[{id, kind, title, created, status_key, status, step, status_base, status_at, status_show}]}"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       },
       "post": {
         "summary": "Send feedback {kind: bug|feature, text, screenshots?, device?, wizard_version?, operation_id?}",
@@ -38,7 +48,7 @@
     },
     "/api/feedback/item": {
       "get": {
-        "summary": "One item ?id= : text, steps, team comments",
+        "summary": "One item ?id= : text, dated timeline steps, note (declined), team_note, team comments",
         "parameters": [
           {
             "name": "id",
@@ -137,7 +147,7 @@
         "summary": "Run the status mapping on given facts {cases:[{state, state_reason, labels, closed_at}]}",
         "responses": {
           "200": {
-            "description": "{results:[{key, line, step}]}"
+            "description": "{results:[{key, line, step, base, at, show}]}"
           }
         }
       }

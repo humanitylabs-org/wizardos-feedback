@@ -15,35 +15,51 @@
   <script defer src="app.js"></script>
 </head>
 <body>
+  <svg class="fb-defs" width="0" height="0" aria-hidden="true">
+    <symbol id="i-bug" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7.5a3 3 0 0 1 6 0"/><rect x="7" y="8" width="10" height="12" rx="5"/><path d="M12 12v8M3.5 13H7M17 13h3.5M4.5 8.5 7.3 10M19.5 8.5 16.7 10M4.5 18.5l2.8-1.5M19.5 18.5l-2.8-1.5"/></g></symbol>
+    <symbol id="i-idea" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3Z"/></g></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12.5a7.5 7.5 0 0 1-11 6.6L4 20l1.1-4.3A7.5 7.5 0 1 1 20 12.5Z"/><path d="M9 12.5h.01M12.5 12.5h.01M16 12.5h.01" stroke-width="2.6"/></g></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
   <div class="wz-app">
-    <header class="wz-head"><h1>Feedback</h1><p id="who">Tell the team what’s broken or what you’d like.</p></header>
+    <header class="wz-head"><h1>Feedback</h1></header>
     <main class="wz-scroll">
-      <section class="wz-sec fb-top" aria-label="Send feedback">
+      <section class="fb-hero" aria-label="Send feedback">
+        <span class="fb-hero-icon" aria-hidden="true"><svg><use href="#i-chat"/></svg></span>
+        <h2 class="fb-hero-h">We’re listening</h2>
+        <p class="fb-hero-p">Tell us what’s broken or what you’d love. We’ll keep you posted here.</p>
         <button type="button" class="wz-button fb-big" id="report-open">Report or request</button>
         <p class="fb-gate" id="gate" hidden></p>
         <div class="fb-signin" id="signin" hidden>
-          <button type="button" class="wz-button secondary" id="oauth-go">Sign in with GitHub</button>
+          <button type="button" class="fb-link" id="oauth-go">Sign in with GitHub</button>
           <div class="fb-code-box" id="oauth-code" hidden>
-            <p class="fb-meta">Type this code on GitHub:</p>
+            <p class="fb-meta">Type this code on the sign-in page:</p>
             <p class="fb-code"><b id="oauth-user-code" aria-live="polite"></b> <button type="button" class="wz-button secondary" id="oauth-copy">Copy</button></p>
-            <a class="wz-button" id="oauth-open" href="https://github.com/login/device" target="_blank" rel="noopener noreferrer">Open GitHub ↗</a>
-            <p class="fb-meta" id="oauth-wait">Waiting for GitHub… this page signs you in by itself.</p>
+            <a class="wz-button" id="oauth-open" href="https://github.com/login/device" target="_blank" rel="noopener noreferrer">Open the sign-in page ↗</a>
+            <p class="fb-meta" id="oauth-wait">Waiting… this page signs you in by itself.</p>
             <button type="button" class="fb-link" id="oauth-cancel">Cancel</button>
           </div>
         </div>
       </section>
-      <section class="wz-sec" aria-labelledby="mine-h">
-        <h2 class="wz-sec-h" id="mine-h">My feedback<span id="count" class="wz-count" hidden></span></h2>
-        <p class="fb-meta fb-local" id="local-note" hidden>Saved on this Wizard. Sign in with GitHub to see replies.</p>
-        <ul id="items" class="wz-list" aria-label="My feedback"></ul>
+
+      <section class="fb-thanks" id="thanks" role="status" aria-live="polite" hidden>
+        <span class="fb-thanks-icon" aria-hidden="true"><svg><use href="#i-check"/></svg></span>
+        <div class="fb-thanks-main"><strong>Thank you — it’s on its way</strong><p id="thanks-p"></p></div>
+        <button type="button" class="fb-thanks-x" id="thanks-x" aria-label="Dismiss">×</button>
+      </section>
+
+      <section class="wz-sec fb-mine" aria-labelledby="mine-h">
+        <h2 class="fb-sec-h" id="mine-h">Your feedback<span id="count" class="wz-count" hidden></span></h2>
+        <p class="fb-meta fb-local" id="local-note" hidden>Kept on this Wizard. Sign in with GitHub to follow it from any device.</p>
+        <ul id="items" class="fb-list" aria-label="Your feedback"></ul>
         <p class="fb-meta fb-loading" id="loading">Loading…</p>
-        <div id="empty" class="wz-empty" hidden>
-          <div class="wz-tile" aria-hidden="true">✎</div>
-          <strong>Nothing sent yet</strong>
-          <p id="empty-p">What you send shows up here, with how it’s going.</p>
+        <div id="empty" class="fb-empty" hidden>
+          <span class="fb-empty-icon" aria-hidden="true"><svg><use href="#i-chat"/></svg></span>
+          <p>Nothing sent yet. Your reports will show up here.</p>
         </div>
       </section>
-      <p class="fb-acct" id="acct" hidden><span id="acct-name"></span> <button type="button" class="fb-link" id="signout">Sign out</button></p>
+      <p class="fb-acct" id="acct" hidden><span id="acct-name"></span> · <button type="button" class="fb-link" id="signout">Sign out</button></p>
     </main>
     <p id="status" class="wz-status wz-sr" role="status" aria-live="polite"></p>
 
@@ -51,29 +67,34 @@
       <form id="rr-form" class="rr" autocomplete="off" novalidate>
         <h2 id="report-h">Report or request</h2>
         <fieldset class="rr-step" id="rr-s1">
-          <legend class="rr-q">What’s up?</legend>
-          <div class="rr-kinds" id="rr-kinds" role="radiogroup" aria-label="What’s up?"></div>
+          <legend class="rr-q">What would you like to tell us?</legend>
+          <div class="rr-kinds" id="rr-kinds" role="radiogroup" aria-label="What would you like to tell us?"></div>
         </fieldset>
         <fieldset class="rr-step" id="rr-s2" hidden>
           <legend class="rr-q" id="rr-ask">What happened, and what should happen?</legend>
-          <textarea id="rr-text" class="wz-field rr-text" rows="8" maxlength="8000" aria-labelledby="rr-ask"></textarea>
+          <textarea id="rr-text" class="wz-field rr-text" rows="7" maxlength="8000" aria-labelledby="rr-ask"></textarea>
           <div class="rr-shot" id="rr-shot-row"></div>
           <p class="rr-auto" id="rr-auto"></p>
         </fieldset>
         <p class="wz-status" id="rr-status" role="status" aria-live="polite"></p>
-        <p class="rr-foot"><button type="button" class="wz-button secondary" id="rr-cancel">Cancel</button> <button type="submit" class="wz-button" id="rr-go" disabled>Send</button></p>
+        <p class="rr-foot"><button type="button" class="wz-button secondary" id="rr-cancel">Not now</button> <button type="submit" class="wz-button rr-send" id="rr-go" disabled>Send</button></p>
         <button type="button" class="fb-link rr-offer" id="rr-offer" hidden>Sign in with GitHub to follow it from any device and see replies from the team</button>
       </form>
     </dialog>
 
     <dialog id="detail" class="wz-sheet" aria-labelledby="d-title">
       <div class="fb-d">
-        <p class="fb-d-kind"><span class="wz-chip" id="d-kind"></span> <span class="fb-meta" id="d-when"></span></p>
+        <p class="fb-d-kind"><span class="fb-kind-tag" id="d-kind"></span> <span class="fb-meta" id="d-when"></span></p>
         <h2 id="d-title"></h2>
-        <p class="fb-d-line" id="d-line"></p>
-        <ol class="fb-steps" id="d-steps" aria-label="Progress"></ol>
-        <div class="fb-d-text wz-prose" id="d-text"></div>
-        <h3 class="wz-sec-h" id="d-comments-h" hidden>From the team</h3>
+        <p class="fb-d-pill"><span class="wz-pill" id="d-line"></span></p>
+        <div class="fb-declined" id="d-declined" hidden>
+          <p id="d-note"></p>
+          <blockquote class="fb-team-note" id="d-team" hidden><p class="fb-meta" id="d-team-meta"></p><p id="d-team-text"></p></blockquote>
+        </div>
+        <ol class="fb-timeline" id="d-steps" aria-label="How it’s going"></ol>
+        <h3 class="fb-sub" id="d-text-h">What you wrote</h3>
+        <div class="fb-d-text" id="d-text"></div>
+        <h3 class="fb-sub" id="d-comments-h" hidden>From the team</h3>
         <ul class="fb-comments" id="d-comments"></ul>
         <p class="wz-status" id="d-status" role="status" aria-live="polite"></p>
       </div>

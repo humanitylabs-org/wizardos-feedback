@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 ROOT = Path(__file__).resolve().parent.parent if '__file__' in globals() else Path(os.environ.get('APP_ROOT', '.')).resolve()
 DATA = Path(os.environ.get('DATA_DIR', ROOT / '.data'))
 APP_ID = 'feedback'
-VERSION = '0.2.1'
+VERSION = '0.3.0'
 SOURCE_REPO = 'humanitylabs-org/wizardos-feedback'
 STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml'}
 USER_AGENT = f'wizardos-feedback/{VERSION} (+https://github.com/{SOURCE_REPO})'
@@ -55,8 +55,8 @@ SHOT_COUNT = 4
 RELAY_SHOT_COUNT, RELAY_SHOT_MAX = 3, 2 * 1024 * 1024
 RELAY_BATCH = 50
 BODY_MAX = SHOT_COUNT * SHOT_MAX * 4 // 3 + 256 * 1024
-SENT = 'Sent. The team sorts it in a minute or two; follow it here.'
-SENT_REVIEW = 'Sent. A person on the team reviews it first.'
+SENT = 'Sent. The team picks it up in a minute or two. You can follow it below.'
+SENT_REVIEW = 'Sent. Someone on the team will look at it soon. You can follow it below.'
 NOT_TEAM = 'Feedback from outside the team opens soon.'
 SIGN_IN_FIRST = 'Sign in with GitHub to send feedback.'
 NO_MEMBER_CHECK = 'Could not check your team membership. Try again in a minute.'
@@ -155,36 +155,74 @@ def set_switch(args):
 
 # ---------- the one status mapping (labels/state -> status_key + plain line) ----------
 
-STEPS = [('received', 'Received'), ('building', 'Being built'), ('checking', 'Being checked'), ('done', 'Done')]
-STATUS = {   # the relay contract's status_keys, plus 'unknown' for anything else
-    'waiting_review': ('Waiting for a person to review', 0),
-    'received': ('Received — sorting it', 0),
-    'queued': ('In line to be built', 0),
-    'building': ('Being built', 1),
-    'checking': ('Being checked', 2),
-    'ready': ('Ready for the team to try', 2),
+STEPS = [('received', 'Received'), ('building', 'Being built'), ('checking', 'Being tested'), ('done', 'Done')]
+STATUS = {   # the relay contract's status_keys, plus 'unknown' for anything else. Plain words for people, no jargon.
+    'waiting_review': ('Waiting for the team to look at it', 0),
+    'received': ('Got it — the team is sorting it', 0),
+    'queued': ('Coming up — in line to be built', 0),
+    'building': ('Being built now', 1),
+    'checking': ('Being tested', 2),
+    'ready': ('Almost there — the team is trying it out', 2),
     'done': ('Done ✓', 3),
-    'not_planned': ('Not planned', -1),
+    'not_planned': ('Declined by the team', -1),
     'unknown': ('Sent', 0),
 }
+DECLINED_NOTE = 'The team looked at this and decided not to go ahead with it.'
+MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
 
 
-def _date(iso):
+def _tzinfo():
+    """The box's local time zone: FEEDBACK_TIMEZONE, else the one the owner's browser last reported, else UTC."""
+    name = os.environ.get('FEEDBACK_TIMEZONE') or _read(DATA / 'timezone.json', {}).get('tz') or ''
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(name) if name else dt.timezone.utc
+    except Exception:   # unknown name or no tz database
+        return dt.timezone.utc
+
+
+def remember_tz(name):
+    """The view passes the browser's zone (IANA name) so agents read the same local times."""
+    name = str(name or '')[:64]
+    if not re.fullmatch(r'[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}', name) or name == _read(DATA / 'timezone.json', {}).get('tz'):
+        return
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(name)
+    except Exception:
+        return
+    with LOCK:
+        _write(DATA / 'timezone.json', {'tz': name})
+
+
+def _when(iso, with_time=True, now=None, tz=None):
+    """'11 Nov, 9:52' in local time (year added only when it is not this year); '' when unreadable."""
     try:
         d = dt.datetime.fromisoformat(str(iso).replace('Z', '+00:00'))
-        return f'{d.day} {d.strftime("%b %Y")}'
     except ValueError:
         return ''
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=dt.timezone.utc)
+    tz = tz or _tzinfo()
+    d = d.astimezone(tz)
+    year = (now or dt.datetime.now(tz)).astimezone(tz).year
+    out = f'{d.day} {MONTHS[d.month - 1]}' + (f' {d.year}' if d.year != year else '')
+    return out + (f', {d.hour}:{d.minute:02d}' if with_time else '')
 
 
 def status_of(state, state_reason=None, labels=(), closed_at=None):
-    """GitHub issue facts -> {'key', 'line', 'step'}. Closed wins; then the Tracker's stage labels, latest stage first.
-    No stage label = queued; `triage` = not sorted yet. step: 0..3 on Received → Being built → Being checked → Done,
-    -1 for not planned."""
+    """GitHub issue facts -> {'key', 'line', 'step', 'base', 'at', 'show'}. Closed wins; then the Tracker's stage
+    labels, latest stage first. No stage label = queued; `triage` = not sorted yet; an inbox item a person rejected
+    (label rejected) is declined. step: 0..3 on Received → Being built → Being tested → Done, -1 when declined."""
     names = {str(n.get('name') if isinstance(n, dict) else n).lower() for n in labels or ()}
     state = str(state or '').lower()
     if state == 'closed':
-        key = 'not_planned' if str(state_reason or '').lower() in ('not_planned', 'duplicate') else 'done'
+        declined = str(state_reason or '').lower() in ('not_planned', 'duplicate') or 'rejected' in names
+        key = 'not_planned' if declined else 'done'
+    elif 'rejected' in names:
+        key = 'not_planned'
+    elif 'needs-review' in names:
+        key = 'waiting_review'
     elif 'ready-to-test' in names:
         key = 'ready'
     elif 'ai-review' in names:
@@ -199,12 +237,17 @@ def status_of(state, state_reason=None, labels=(), closed_at=None):
 
 
 def keyed(key, when=None):
-    """A status_key (from status_of or the relay) -> {'key', 'line', 'step'}; done gets its date."""
+    """A status_key (from status_of or the relay) -> {'key', 'line', 'step', 'base', 'at', 'show'}.
+    Done gets its day, declined its day and time: 'Declined by the team · 11 Nov, 9:52'. `base` + `at` + `show`
+    ('date'|'datetime') let the screen redo the date in the viewer's own time zone."""
     key = 'received' if key == 'not_found' else key   # the relay has not indexed a fresh report yet (~1 min)
-    line, step = STATUS.get(key, STATUS['unknown'])
-    if key == 'done' and when and _date(when):
-        line = f'Done ✓ ({_date(when)})'
-    return {'key': key if key in STATUS else 'unknown', 'line': line, 'step': step}
+    key = key if key in STATUS else 'unknown'
+    base, step = STATUS[key]
+    out = {'key': key, 'line': base, 'step': step, 'base': base, 'at': None, 'show': None}
+    if key in ('done', 'not_planned') and when and _when(when):
+        show = 'date' if key == 'done' else 'datetime'
+        out.update(line=f'{base} · {_when(when, show == "datetime")}', at=when, show=show)
+    return out
 
 
 def kind_of(labels):
@@ -712,13 +755,18 @@ def _row(it):
     labels = it.get('labels') or []
     st = status_of(it.get('state'), it.get('state_reason'), labels, it.get('closed_at'))
     return {'id': it.get('node_id'), 'kind': kind_of(labels), 'title': it.get('title') or '', 'created': it.get('created_at'),
-            'status_key': st['key'], 'status': st['line'], 'step': st['step'], 'source': 'github'}
+            **_status_fields(st), 'source': 'github'}
+
+
+def _status_fields(st):
+    return {'status_key': st['key'], 'status': st['line'], 'step': st['step'], 'status_base': st['base'],
+            'status_at': st['at'], 'status_show': st['show']}
 
 
 def _local_row(rec):
-    st = keyed(rec.get('status_key') or 'waiting_review', rec.get('done_at') or rec.get('updated'))
+    st = keyed(rec.get('status_key') or 'waiting_review', rec.get('closed_at') or rec.get('done_at') or rec.get('updated'))
     return {'id': rec['id'], 'kind': rec.get('kind') or 'idea', 'title': rec.get('title') or '', 'created': rec.get('created'),
-            'status_key': st['key'], 'status': st['line'], 'step': st['step'], 'source': 'local'}
+            **_status_fields(st), 'source': 'local'}
 
 
 def _search(q):
@@ -779,7 +827,8 @@ def refresh_local(sent, now=None):
             if isinstance(d, dict) and d.get('status_key') == 'not_found':
                 rec['status_key'] = 'received'
             elif isinstance(d, dict) and d.get('status_key') in STATUS:
-                rec.update(status_key=d['status_key'], updated=d.get('updated'), done_at=d.get('done_at'))
+                rec.update(status_key=d['status_key'], updated=d.get('updated'), done_at=d.get('done_at'),
+                           closed_at=d.get('closed_at') or d.get('done_at'))
                 if d.get('title'):
                     rec['title'] = str(d['title'])[:200]
             rec['checked'] = now
@@ -790,7 +839,8 @@ def refresh_local(sent, now=None):
     return sent
 
 
-def feedback_list():
+def feedback_list(tz=None):
+    remember_tz(tz)
     acct = account()
     local = [_local_row(r) for r in refresh_local(_read(DATA / 'sent.json', [])) if isinstance(r, dict) and r.get('id')]
     if acct:
@@ -803,7 +853,9 @@ def feedback_list():
 
 DETAIL = '''query($id:ID!){node(id:$id){... on Issue{id title body state stateReason createdAt closedAt
  labels(first:20){nodes{name}} author{login}
- comments(last:40){nodes{author{login} body createdAt}}}}}'''
+ comments(last:40){nodes{author{login} body createdAt}}
+ timelineItems(first:100, itemTypes:[LABELED_EVENT]){nodes{... on LabeledEvent{createdAt label{name}}}}}}}'''
+STEP_LABELS = {'building': 1, 'ai-review': 2, 'ready-to-test': 2}
 FOOT = re.compile(r'\n+---\n+Filed with (?:Report or request|Feedback)[\s\S]*$')
 
 
@@ -830,9 +882,29 @@ def _who(login, me):
     return 'You' if low == (me or '').lower() else 'The team'
 
 
-def _steps(st):
-    return [{'key': k, 'label': lab, 'state': 'off' if st['step'] < 0 else 'done' if i < st['step'] or (i == 3 and st['step'] == 3)
+def _steps(st, reached=None):
+    """The four steps with state done/now/next ('off' for all when declined) and `at` = when each was reached
+    (Received = sent; Done = closed; middle steps from the label events when known)."""
+    reached = reached or {}
+    return [{'key': k, 'label': lab, 'at': reached.get(i) if (st['step'] >= i or i == 0) else None,
+             'state': 'off' if st['step'] < 0 else 'done' if i < st['step'] or (i == 3 and st['step'] == 3)
              else 'now' if i == st['step'] else 'next'} for i, (k, lab) in enumerate(STEPS)]
+
+
+def timeline(st, created=None, events=()):
+    """A friendly vertical timeline: one entry per step reached, each with its date, then what comes next.
+    Declined: Received, then 'Declined by the team' with its day and time."""
+    reached = {0: created}
+    for name, when in sorted(events, key=lambda e: e[1] or ''):
+        i = STEP_LABELS.get(str(name).lower())
+        if i and i <= max(st['step'], 0) and not reached.get(i):
+            reached[i] = when
+    if st['key'] == 'done':
+        reached[3] = st['at']
+    if st['key'] == 'not_planned':
+        return [{'key': 'received', 'label': 'Received', 'state': 'done', 'at': created},
+                {'key': 'declined', 'label': STATUS['not_planned'][0], 'state': 'declined', 'at': st['at']}]
+    return _steps(st, reached)
 
 
 def feedback_get(fid):
@@ -842,7 +914,9 @@ def feedback_get(fid):
         if not rec:
             raise Problem(404, 'That feedback is not on this Wizard.')
         row = _local_row(rec)
-        return {**row, 'text': rec.get('text') or '', 'comments': [], 'steps': _steps({'step': row['step']})}
+        st = keyed(row['status_key'], row['status_at'])
+        return {**row, 'text': rec.get('text') or '', 'comments': [], 'steps': timeline(st, rec.get('created')),
+                'note': DECLINED_NOTE if st['key'] == 'not_planned' else '', 'team_note': None}
     if not re.fullmatch(r'[A-Za-z0-9_=-]{6,80}', fid):
         raise Problem(400, 'Unknown feedback id.')
     if not account():
@@ -861,9 +935,18 @@ def feedback_get(fid):
             continue
         people.append({'who': _who(who, me), 'when': c.get('createdAt'), 'text': text[:4000]})
     people.sort(key=lambda c: c.get('when') or '')
+    events = [(((e or {}).get('label') or {}).get('name') or '', (e or {}).get('createdAt'))
+              for e in (node.get('timelineItems') or {}).get('nodes') or []]
+    team_note = None
+    if st['key'] == 'not_planned':   # the team's closing word, if a person left one: shown with the declined line
+        last = [c for c in people if c['who'] == 'The team']
+        if last:
+            team_note = last[-1]
+            people = [c for c in people if c is not team_note]
     return {'id': node['id'], 'kind': kind_of(labels), 'title': node.get('title') or '', 'created': node.get('createdAt'),
-            'text': _plain(node.get('body')), 'status_key': st['key'], 'status': st['line'], 'step': st['step'],
-            'steps': _steps(st), 'comments': people[-12:], 'source': 'github'}
+            'text': _plain(node.get('body')), **_status_fields(st), 'steps': timeline(st, node.get('createdAt'), events),
+            'note': DECLINED_NOTE if st['key'] == 'not_planned' else '', 'team_note': team_note,
+            'comments': people[-12:], 'source': 'github'}
 
 
 def check_status(args):
@@ -999,7 +1082,7 @@ class Handler(BaseHTTPRequestHandler):
         routes = {
             '/healthz': lambda: {'ok': True, 'app': APP_ID, 'version': VERSION},
             '/api/status': status,
-            '/api/feedback': feedback_list,
+            '/api/feedback': lambda: feedback_list(q.get('tz', [''])[0]),
             '/api/feedback/item': lambda: feedback_get(q.get('id', [''])[0]),
             '/api/device': device_status,
             '/api/switches': switches_doc,

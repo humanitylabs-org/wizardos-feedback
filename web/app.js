@@ -1,9 +1,46 @@
 'use strict';
-// Feedback 0.2: one 'Report or request' button (two-step sheet, copied from the Tracker reporter) and 'My feedback',
-// newest first, each with its kind and one plain status line. Tap a row for the full text, progress and team comments.
+// Feedback 0.3: a warm welcome with one big 'Report or request' button (two-step sheet: pick a kind card, then words)
+// and 'Your feedback', newest first: kind icon, title, a coloured status pill in plain words, progress dots and
+// a relative time. Tap a row for the full text, a dated timeline and words from the team.
 const $ = id => document.getElementById(id);
 const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const KINDS = [['bug', 'Something’s broken'], ['feature', 'I’d like something new']];
+const KINDS = [['bug', 'Something’s broken', 'An app or part of Wizard isn’t working right'],
+  ['feature', 'I’d like something new', 'An idea, a wish, or something you miss']];
+const svgNS = 'http://www.w3.org/2000/svg';
+function icon(name, cls) {
+  const s = document.createElementNS(svgNS, 'svg'); s.setAttribute('class', 'fb-i' + (cls ? ' ' + cls : '')); s.setAttribute('aria-hidden', 'true');
+  const u = document.createElementNS(svgNS, 'use'); u.setAttribute('href', '#i-' + name); s.append(u); return s;
+}
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// '11 Nov, 9:52' in the viewer's own time (year only when it is not this year).
+function when(iso, withTime = true) {
+  const d = new Date(iso); if (!iso || isNaN(d)) return '';
+  const out = `${d.getDate()} ${MONTHS[d.getMonth()]}` + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+  return withTime ? `${out}, ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}` : out;
+}
+// '2 hours ago', 'yesterday', '3 days ago', then a plain date.
+function ago(iso) {
+  const d = new Date(iso); if (!iso || isNaN(d)) return '';
+  const s = (Date.now() - d) / 1000, m = Math.round(s / 60), h = Math.round(s / 3600), days = Math.round(s / 86400);
+  if (s < 60) return 'just now';
+  if (m < 60) return m === 1 ? 'a minute ago' : `${m} minutes ago`;
+  if (h < 24) return h === 1 ? 'an hour ago' : `${h} hours ago`;
+  if (days < 2) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  return when(iso, false);
+}
+// The status line in the viewer's time zone: 'Declined by the team · 11 Nov, 9:52', 'Done ✓ · 11 Nov'.
+const line = it => it.status_base && it.status_at && when(it.status_at) ? `${it.status_base} · ${when(it.status_at, it.status_show === 'datetime')}` : (it.status || '');
+const TONE = { done: 'ok', not_planned: 'off', building: 'fb-on', checking: 'fb-on', ready: 'fb-on', unknown: 'fb-wait' };
+const tone = k => TONE[k] || 'fb-wait';
+const kindName = k => k === 'bug' ? 'Something’s broken' : 'An idea';
+function dots(step) {
+  const w = mk('span', 'fb-dots'); w.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 4; i++) { const d = mk('i'); d.dataset.on = String(step >= 0 && i <= step); w.append(d); }
+  if (step < 0) w.dataset.off = 'true';
+  return w;
+}
+const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { return ''; } })();
 const PROMPTS = {
   bug: ['What happened, and what should happen?', 'What happened? What should have happened instead? If it’s about one app, name it.'],
   feature: ['What would you like, and why?', 'What you want, and why it would help. If it’s about one app, name it.'],
@@ -29,33 +66,40 @@ function device() {
   return `${os} · ${br}`;
 }
 const wizardVersion = () => updates && updates.installed ? String(updates.installed) : '';
-const day = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); };
 
 // ---------- account + who can send ----------
 function paintAccount() {
   const on = !!(me && me.signed_in);
   $('acct').hidden = !on;
-  $('acct-name').textContent = on ? 'Signed in as ' + (me.login || '') : '';
+  $('acct-name').textContent = on ? 'Signed in as ' + (me.name || me.login || '') : '';
   $('signin').hidden = on || !me;
   const gate = $('gate');
-  gate.hidden = !me || me.can_send;
+  // Signed out with sending off: the sign-in link itself says why ('Sign in with GitHub to send feedback').
+  const oneLine = !!(me && !on && !me.can_send && me.send_reason === 'Sign in with GitHub to send feedback.');
+  signinLabel = oneLine ? 'Sign in with GitHub to send feedback' : 'Sign in with GitHub';
+  if (!$('oauth-go').disabled) $('oauth-go').textContent = signinLabel;
+  gate.hidden = !me || me.can_send || oneLine;
   gate.textContent = me && !me.can_send ? (me.send_reason || 'Sign in with GitHub to send feedback.') : '';
   $('rr-offer').hidden = !(me && me.signin_offer && !me.signed_in);
   if (me && me.signin_offer) $('rr-offer').textContent = me.signin_offer;
 }
+let signinLabel = 'Sign in with GitHub';
 async function loadStatus() { me = await api('api/status'); paintAccount(); }
 
 // ---------- My feedback ----------
 function row(it) {
   const li = mk('li');
-  const b = mk('button', 'wz-row fb-row'); b.type = 'button';
-  const main = mk('span', 'wz-main');
-  const t = mk('b', null, it.title || 'Untitled');
-  const line = mk('small', 'fb-line ' + 'fb-' + (it.status_key || 'unknown'), it.status);
-  main.append(t, line);
-  const chip = mk('span', 'wz-chip fb-kind', it.kind === 'bug' ? 'Bug' : 'Idea');
-  b.append(main, chip);
-  b.setAttribute('aria-label', `${it.title}. ${it.kind === 'bug' ? 'Bug' : 'Idea'}. ${it.status}`);
+  const b = mk('button', 'fb-row'); b.type = 'button';
+  const tile = mk('span', 'fb-tile fb-tile-' + (it.kind === 'bug' ? 'bug' : 'idea')); tile.append(icon(it.kind === 'bug' ? 'bug' : 'idea'));
+  const main = mk('span', 'fb-row-main');
+  const t = mk('b', 'fb-row-title', it.title || 'Untitled');
+  const text = line(it);
+  const pill = mk('span', 'wz-pill fb-pill ' + tone(it.status_key), text);
+  const meta = mk('span', 'fb-row-meta');
+  meta.append(dots(it.pending ? -2 : it.step == null ? 0 : it.step), mk('small', null, it.pending ? '' : 'Sent ' + ago(it.created)));
+  main.append(t, pill, meta);
+  b.append(tile, main, icon('chev', 'fb-chev'));
+  b.setAttribute('aria-label', `${it.title}. ${kindName(it.kind)}. ${text}. ${it.pending ? '' : 'Sent ' + ago(it.created)}`);
   if (it.pending) b.disabled = true; else b.onclick = () => openDetail(it);
   li.append(b);
   return li;
@@ -67,31 +111,47 @@ function paintList() {
   $('empty').hidden = all.length > 0;
   $('count').hidden = !all.length; $('count').textContent = String(all.length);
   $('local-note').hidden = !(me && !me.signed_in && all.length);
-  $('empty-p').textContent = me && !me.signed_in ? 'What you send shows up here. Sign in with GitHub to see everything you’ve sent from any Wizard.' : 'What you send shows up here, with how it’s going.';
 }
 async function loadList() {
-  try { const r = await api('api/feedback'); items = r.items || []; paintList(); }
+  try { const r = await api('api/feedback' + (TZ ? '?tz=' + encodeURIComponent(TZ) : '')); items = r.items || []; paintList(); }
   catch (e) { $('loading').hidden = true; paintList(); say(e.message, 'error'); }
 }
 
 // ---------- detail sheet ----------
 let detailFor = null;
 function paintDetail(d) {
-  $('d-kind').textContent = d.kind === 'bug' ? 'Bug' : 'Idea';
-  $('d-when').textContent = d.created ? 'Sent ' + day(d.created) : '';
+  const k = $('d-kind'); k.replaceChildren(icon(d.kind === 'bug' ? 'bug' : 'idea'), document.createTextNode(kindName(d.kind)));
+  $('d-when').textContent = d.created ? 'Sent ' + ago(d.created) : '';
   $('d-title').textContent = d.title || '';
-  $('d-line').textContent = d.status || '';
+  $('d-line').textContent = line(d);
+  $('d-line').className = 'wz-pill fb-pill ' + tone(d.status_key);
+  const declined = d.status_key === 'not_planned';
+  $('d-declined').hidden = !declined || !d.note;
+  $('d-note').textContent = d.note || '';
+  const tn = d.team_note;
+  $('d-team').hidden = !tn;
+  $('d-team-meta').textContent = tn ? 'The team' + (tn.when ? ' · ' + when(tn.when) : '') : '';
+  $('d-team-text').textContent = tn ? tn.text : '';
   const steps = d.steps || [];
-  $('d-steps').replaceChildren(...steps.map(s => { const li = mk('li', 'fb-step', s.label); li.dataset.state = s.state; if (s.state === 'now') li.setAttribute('aria-current', 'step'); return li; }));
-  $('d-steps').hidden = !steps.length || d.status_key === 'not_planned';
+  $('d-steps').replaceChildren(...steps.map(s => {
+    const li = mk('li', 'fb-tl'); li.dataset.state = s.state;
+    if (s.state === 'now') li.setAttribute('aria-current', 'step');
+    const dot = mk('span', 'fb-tl-dot'); if (s.state === 'done') dot.append(icon('check'));
+    const body = mk('span', 'fb-tl-body');
+    const label = s.key === 'done' && s.state === 'done' ? 'Done ✓' : s.label;
+    body.append(mk('b', null, label), mk('small', null, s.at ? when(s.at) : s.state === 'now' ? 'Now' : s.state === 'next' ? 'Next' : ''));
+    li.append(dot, body); return li;
+  }));
+  $('d-steps').hidden = !steps.length;
   $('d-text').textContent = d.text || '';
+  $('d-text-h').hidden = !d.text;
   const cs = d.comments || [];
   $('d-comments-h').hidden = !cs.length;
-  $('d-comments').replaceChildren(...cs.map(c => { const li = mk('li', 'fb-comment'); li.append(mk('p', 'fb-meta', `${c.who} · ${day(c.when)}`), mk('p', 'fb-c-text', c.text)); return li; }));
+  $('d-comments').replaceChildren(...cs.map(c => { const li = mk('li', 'fb-comment'); li.append(mk('p', 'fb-meta', `${c.who} · ${when(c.when)}`), mk('p', 'fb-c-text', c.text)); return li; }));
 }
 async function openDetail(it) {
   detailFor = it.id;
-  paintDetail({ ...it, steps: [], text: '', comments: [] });   // the sheet opens at once with what the row knows
+  paintDetail({ ...it, steps: [], text: '', comments: [], note: '', team_note: null });   // the sheet opens at once with what the row knows
   $('d-status').textContent = 'Loading…';
   WzSheet.open($('detail'));
   try {
@@ -103,8 +163,11 @@ async function openDetail(it) {
 
 // ---------- the report sheet ----------
 function paintForm() {
-  $('rr-kinds').replaceChildren(...KINDS.map(([key, name]) => {
-    const b = mk('button', 'rr-pick', name); b.type = 'button'; b.setAttribute('role', 'radio');
+  $('rr-kinds').replaceChildren(...KINDS.map(([key, name, sub]) => {
+    const b = mk('button', 'rr-pick'); b.type = 'button'; b.setAttribute('role', 'radio');
+    const t = mk('span', 'fb-tile fb-tile-' + (key === 'bug' ? 'bug' : 'idea')); t.append(icon(key === 'bug' ? 'bug' : 'idea'));
+    const w = mk('span', 'rr-pick-main'); w.append(mk('b', null, name), mk('small', null, sub));
+    b.append(t, w);
     b.setAttribute('aria-checked', String(key === kind));
     b.onclick = () => { const first = !kind; kind = key; paintForm(); saveDraft(); if (first) $('rr-text').focus(); };
     return b;
@@ -112,7 +175,7 @@ function paintForm() {
   $('rr-s2').hidden = !kind;
   const [ask, ph] = PROMPTS[kind] || PROMPTS.bug;
   $('rr-ask').textContent = ask; $('rr-text').placeholder = ph;
-  $('rr-auto').textContent = 'Adds: ' + [wizardVersion() && 'WizardOS ' + wizardVersion(), device()].filter(Boolean).join(' · ');
+  $('rr-auto').textContent = 'We’ll also include: ' + [wizardVersion() && 'WizardOS ' + wizardVersion(), device()].filter(Boolean).join(' · ');
   const ready = kind && $('rr-text').value.trim().length >= 8;
   const can = !!(me && me.can_send);
   $('rr-go').disabled = !ready || !can;
@@ -198,7 +261,7 @@ function send(e) {
   api('api/feedback', body).then(out => {
     pending = pending.filter(p => p !== temp);
     if (out.item) items = [out.item, ...items.filter(i => i.id !== out.item.id)];
-    paintList(); say(out.sent || 'Sent.', 'note');
+    paintList(); say(out.sent || 'Sent.'); thanks(out.sent);
     kind = null; shots = []; op = null; $('rr-text').value = ''; syncHold();
     setTimeout(loadList, 4000);
   }).catch(err => {
@@ -208,12 +271,20 @@ function send(e) {
   });
 }
 
+let thanksTimer = null;
+function thanks(text) {
+  $('thanks-p').textContent = (text || '').replace(/^Sent\.\s*/, '') || 'We’ll keep you posted here.';
+  $('thanks').hidden = false; $('thanks').classList.remove('fb-pop'); void $('thanks').offsetWidth; $('thanks').classList.add('fb-pop');
+  clearTimeout(thanksTimer); thanksTimer = setTimeout(() => { $('thanks').hidden = true; }, 12000);
+}
+$('thanks-x').onclick = () => { clearTimeout(thanksTimer); $('thanks').hidden = true; };
+
 // ---------- Sign in with GitHub (device flow, Tracker 0.24 UX) ----------
 function stopDevice() { clearTimeout(devTimer); devTimer = null; $('oauth-code').hidden = true; $('oauth-go').hidden = false; }
 function showCode(r) {
   $('oauth-user-code').textContent = r.user_code;
   $('oauth-open').href = /^https:\/\//.test(r.verification_uri || '') ? r.verification_uri : 'https://github.com/login/device';
-  $('oauth-wait').textContent = 'Waiting for GitHub… this page signs you in by itself.';
+  $('oauth-wait').textContent = 'Waiting… this page signs you in by itself.';
   $('oauth-code').hidden = false; $('oauth-go').hidden = true;
   clearTimeout(devTimer); devTimer = setTimeout(pollDevice, 2500);
 }
@@ -227,10 +298,10 @@ async function pollDevice() {
   if (r.state !== 'none' && r.state !== 'cancelled') say(r.message || 'Sign-in did not finish. Try again.', 'error');
 }
 $('oauth-go').onclick = () => {
-  const b = $('oauth-go'); b.disabled = true; b.textContent = 'Asking GitHub for a code…';
+  const b = $('oauth-go'); b.disabled = true; b.textContent = 'Getting a sign-in code…';
   api('api/device/start', {}).then(r => { say(''); showCode(r); })
     .catch(err => say(err.message, 'error'))
-    .finally(() => { b.disabled = false; b.textContent = 'Sign in with GitHub'; });
+    .finally(() => { b.disabled = false; b.textContent = signinLabel; });
 };
 $('oauth-copy').onclick = async () => {
   const code = $('oauth-user-code').textContent;
@@ -249,7 +320,7 @@ $('signout').onclick = () => {
 };
 
 // ---------- wiring ----------
-$('report-open').onclick = openForm;
+$('report-open').onclick = () => { $('thanks').hidden = true; openForm(); };
 $('rr-form').addEventListener('submit', send);
 $('rr-text').addEventListener('input', () => { paintForm(); saveDraft(); });
 for (const ev of ['paste', 'drop']) $('rr-text').addEventListener(ev, e => {
@@ -264,7 +335,7 @@ $('detail').addEventListener('close', () => { detailFor = null; });
 if (!window.WizardApp || WizardApp.version !== 1) {
   say('Wizard system functions are unavailable. Open this through Wizard.', 'error');
 } else {
-  WizardApp.ready({ name: 'feedback', version: '0.2.1' });
+  WizardApp.ready({ name: 'feedback', version: '0.3.0' });
   // One screen; sheets push their own Back step (WzSheet). Back never exits from here.
   WizardApp.back.register({ canGoBack: () => false, back: () => false });
 }
