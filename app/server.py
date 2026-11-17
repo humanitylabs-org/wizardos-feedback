@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 ROOT = Path(__file__).resolve().parent.parent if '__file__' in globals() else Path(os.environ.get('APP_ROOT', '.')).resolve()
 DATA = Path(os.environ.get('DATA_DIR', ROOT / '.data'))
 APP_ID = 'feedback'
-VERSION = '0.3.1'
+VERSION = '0.3.2'
 SOURCE_REPO = 'humanitylabs-org/wizardos-feedback'
 STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml'}
 USER_AGENT = f'wizardos-feedback/{VERSION} (+https://github.com/{SOURCE_REPO})'
@@ -124,8 +124,11 @@ def policy():
     return _read(DATA / 'policy.json', {})
 
 
+DEFAULT_RELAY_URL = 'https://wizardos-feedback-relay.ai-wizards-previews.workers.dev'
+
+
 def relay_url():
-    v = str(os.environ.get('FEEDBACK_RELAY_URL') or policy().get('relay_url') or '')
+    v = str(os.environ.get('FEEDBACK_RELAY_URL') or policy().get('relay_url') or DEFAULT_RELAY_URL)
     ok = re.match(r'^https://\S+$', v) or re.match(r'^http://(127\.0\.0\.1|localhost)(:\d+)?(/\S*)?$', v)
     return v.rstrip('/') if ok else ''
 

@@ -107,10 +107,10 @@ class Page(unittest.TestCase):
     css = (WEB / 'styles.css').read_text()
 
     def test_version(self):
-        self.assertEqual(server.VERSION, '0.3.1')
-        self.assertEqual(json.loads((ROOT / 'runtipi/config.json').read_text())['version'], '0.3.1')
-        self.assertIn("version: '0.3.1'", self.js)
-        self.assertIn('version: 0.3.1', (ROOT / 'wizard.md').read_text())
+        self.assertEqual(server.VERSION, '0.3.2')
+        self.assertEqual(json.loads((ROOT / 'runtipi/config.json').read_text())['version'], '0.3.2')
+        self.assertIn("version: '0.3.2'", self.js)
+        self.assertIn('version: 0.3.2', (ROOT / 'wizard.md').read_text())
 
     def test_no_welcome_card(self):
         for gone in ('We’re listening', 'Tell us what’s broken', 'fb-hero', 'fb-empty-icon'):
@@ -142,3 +142,10 @@ class Page(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DefaultRelay(unittest.TestCase):
+    def test_store_install_reaches_relay_without_setup(self):
+        import os
+        os.environ.pop('FEEDBACK_RELAY_URL', None)
+        self.assertTrue(server.relay_url().startswith('https://'))

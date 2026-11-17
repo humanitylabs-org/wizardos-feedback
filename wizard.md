@@ -4,7 +4,7 @@ id: feedback
 name: Feedback
 type: service
 category: app
-version: 0.3.1
+version: 0.3.2
 summary: Report a bug or ask for something new, and follow your own feedback in plain words.
 license: GPL-3.0-only
 source: https://github.com/humanitylabs-org/wizardos-feedback
@@ -89,6 +89,7 @@ The GitHub token stays on this box (`DATA_DIR/private/account.json`, 0600); it i
 Appearance: shared kit only ([style guide](https://github.com/humanitylabs-org/wizard-os/blob/main/style/APP-DESIGN-RULES.md)).
 
 ## Changelog
+- **0.3.2**: Works straight from the Store: a fresh install reaches the team's relay with no setup, so anyone can send feedback.
 - **0.3.1**: Calmer page: the welcome card is gone — just the title and one **Report or request** button; the list is flat
   rows with thin dividers (no cards), smaller status pills and progress dots. Filter chips **All · Open · Done · Declined**
   with counts (plus **Bugs · Ideas** when they fit on one line), remembered on this device; one plain line when a filter

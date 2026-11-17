@@ -1,7 +1,7 @@
 ---
 name: feedback
 description: Use when the owner wants to report a bug, ask for a feature, or check his feedback.
-version: 0.3.1
+version: 0.3.2
 author: Humanity Labs, Hermes Agent
 license: GPL-3.0-only
 platforms: [linux, macos]

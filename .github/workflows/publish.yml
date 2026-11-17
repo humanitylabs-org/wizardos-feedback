@@ -1,0 +1,13 @@
+name: Publish to Wizard App Store
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -sS --fail-with-body -X POST https://apps.aiwizards.com/v1/publish \
+            -H 'content-type: application/json' -d "{\"repo\":\"${{ github.repository }}\"}"

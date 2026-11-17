@@ -370,7 +370,7 @@ $('detail').addEventListener('close', () => { detailFor = null; });
 if (!window.WizardApp || WizardApp.version !== 1) {
   say('Wizard system functions are unavailable. Open this through Wizard.', 'error');
 } else {
-  WizardApp.ready({ name: 'feedback', version: '0.3.1' });
+  WizardApp.ready({ name: 'feedback', version: '0.3.2' });
   // One screen; sheets push their own Back step (WzSheet). Back never exits from here.
   WizardApp.back.register({ canGoBack: () => false, back: () => false });
 }
